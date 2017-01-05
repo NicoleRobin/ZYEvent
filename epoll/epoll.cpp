@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <queue>
 #include <map>
 #include <errno.h>
 using namespace std;
@@ -27,8 +28,12 @@ const int SEND_SIZE = 1040;
 const int MAX_EVENTS = 1024;
 typedef struct ClientInfo
 {
+	ClientInfo()
+	{
+		bzero(&addr, sizeof(addr));
+	}
 	sockaddr_in addr;
-	string buf;
+	queue<string> queueBuf;
 }ClientInfo;
 
 int main(int argc, char **argv)
@@ -96,11 +101,10 @@ int main(int argc, char **argv)
 				cout << "accept a new client:" << inet_ntoa(addrClient.sin_addr) << endl;
 				fcntl(client, F_SETFL, O_NONBLOCK);
 				ev.data.fd = client;
-				ev.events = EPOLLIN;
+				ev.events = EPOLLIN | EPOLLOUT;
 				epoll_ctl(epollFd, EPOLL_CTL_ADD, client, &ev);
 				struct ClientInfo info;
 				info.addr = addrClient;
-				info.buf = "";
 				mapClientInfo.insert(make_pair<int, struct ClientInfo>(client, info));
 			}
 			else if (events[i].events & EPOLLIN)
@@ -134,28 +138,32 @@ int main(int argc, char **argv)
 					mapClientInfo.erase(client);
 				}
 
-				cout << "client[" << inet_ntoa(mapClientInfo[client].addr.sin_addr) << "] said:" << recvBuf << endl;
+				cout << "client[" << inet_ntoa(mapClientInfo[client].addr.sin_addr) << "] said:" << recvBuf;
 				sprintf(sendBuf, "Your said:%s", recvBuf);
-				mapClientInfo[client].buf = sendBuf;
+				mapClientInfo[client].queueBuf.push(sendBuf);
 
 				// set write event
-				ev.data.fd = client;
-				ev.events = EPOLLOUT;
-				epoll_ctl(epollFd, EPOLL_CTL_MOD, client, &ev);
+				// ev.data.fd = client;
+				// ev.events = EPOLLOUT;
+				// epoll_ctl(epollFd, EPOLL_CTL_MOD, client, &ev);
 			}
 			else if (events[i].events & EPOLLOUT)
 			{ // write event
 				client = events[i].data.fd;
-				string strTemp = mapClientInfo[client].buf;
-				if ((ret = send(client, strTemp.c_str(), strTemp.length(), 0) < 0))
+				if (!mapClientInfo[client].queueBuf.empty())
 				{
-					perror("send failed!");
-					return -1;
-				}
+					string strTemp = mapClientInfo[client].queueBuf.front();
+					mapClientInfo[client].queueBuf.pop();
+					if ((ret = send(client, strTemp.c_str(), strTemp.length(), 0) < 0))
+					{
+						perror("send failed!");
+						return -1;
+					}
 
-				ev.data.fd = client;
-				ev.events = EPOLLIN;
-				epoll_ctl(epollFd, EPOLL_CTL_MOD, client, &ev);
+				}
+				// ev.data.fd = client;
+				// ev.events = EPOLLIN;
+				// epoll_ctl(epollFd, EPOLL_CTL_MOD, client, &ev);
 			}
 		}
 	}
