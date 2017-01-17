@@ -1,108 +1,159 @@
+/*
+ * g++ -o main ./main.cpp -lzylog
+ */
+#include <unistd.h>
+#include <libgen.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/epoll.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 
-#define BZERO(data) bzero(&data, sizeof(data));
+#include "ZYLog.h"
 
-const int BACK_LOG = 5;
-const int MAX_EVENT = 500;
+#define BZERO(data) { memset(&data, 0, sizeof(data)); }
 
-typedef void (*call_back)(int fd, int events, void *arg);
+#define ASSERT(expr) { if (!(expr)) { LOG_ERROR("ASSERT \"%s\" failed", #expr); }
+#define ASSERT_RET(expr, args...) { if (!(expr)) { LOG_ERROR("ASSERT \"%s\" failed", #expr); return args; }}
 
-const int BUF_SIZE = 1024;
-struct event
+void TrimStr(char *str)
 {
-	int fd;
-	call_back func;
-	int events;
-	void *arg;
-	char buf[BUF_SIZE + 1];
-};
-
-void Usage()
-{
-	printf("Usage: echo port\n");
-}
-
-void AccecptConn(int fd, int events, void *arg)
-{
-}
-
-void RecvData(int fd, int events, void *arg)
-{
-}
-
-void SendData(int fd, int events, void *arg)
-{
-
+	int iLen = strlen(str);
+	for (int i = iLen - 1; i >= 0; --i)
+	{
+		if (!isspace(str[i]))
+		{
+			break;
+		}
+		str[i] = '\0';
+	}
 }
 
 int main(int argc, char **argv)
 {
 	if (argc != 2)
 	{
-		Usage();
+		printf("Usage:%s port\n", basename(argv[0]));
 		return -1;
 	}
 
+	int iPort = atoi(argv[1]);
+	LOG_DEBUG("Port[%d]", iPort);
 
-	int fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (fd == -1)
-	{
-		perror("socket");
-		return -1;
-	}
+	int server = socket(AF_INET, SOCK_STREAM, 0);
+	ASSERT_RET(server, -1);
 
 	struct sockaddr_in addr;
 	BZERO(addr);
 	addr.sin_family = AF_INET;
-	addr.sin_addr = SOCKADDR_ANY;
-	addr.sin_port = htons(port);
+	addr.sin_addr.s_addr = INADDR_ANY;
+	addr.sin_port = htons(iPort);
 
-	if (0 != bind(fd, (struct sockaddr*)&addr, sizeof(addr)))
+	int iRet = bind(server, (struct sockaddr*)&addr, sizeof(addr));
+	ASSERT_RET(iRet != -1, -1);
+
+	iRet = listen(server, 5);
+	ASSERT_RET(iRet != -1, -1);
+
+	int epfd = epoll_create(500);
+	ASSERT_RET(epfd != -1, -1);
+
+	epoll_event event;
+	event.events = EPOLLIN;
+	event.data.fd = server;
+
+	epoll_ctl(epfd, EPOLL_CTL_ADD, server, &event);
+
+	epoll_event events[500];
+	while (true)
 	{
-		perror("bind");
-		return -1;
-	}
+		int fds = epoll_wait(epfd, events, 500, -1);
+		ASSERT_RET(fds != -1, -1);
+		LOG_DEBUG("fds[%d]", fds);
 
-	if (0 != listen(fd, BACK_LOG))
-	{
-		perror("listen");
-		return -1;
-	}
-
-	printf("Listening on port:%d\n", port);
-
-	int epfd = epoll_create(MAX_EVENT);
-	if (epfd == -1)
-	{
-		perror("epoll_create");
-		return -1;
-	}
-	struct epoll_event events[MAX_EVENT];
-	
-
-	while()
-	{
-		int fds = epoll_wait(epfd, &events, MAX_EVENT, -1);
-		if (fds < 0)
-		{
-			perror("epoll_wait");
-			break;
-		}
 		for (int i = 0; i < fds; ++i)
 		{
-			event *pEvent = events[i].data.ptr;
-			if ((events[i].events & EVENTIN) && (pEvent->events & EVENTIN))
-			{
-				
-			}
-			if ((events[i].events & EVENTOUT) && (pEvent->events & EVENTOUT))
-			{
+			int fd = events[i].data.fd;
+			if (fd == server)
+			{ // accept new conn
+				struct sockaddr_in cli_addr;
+				socklen_t cli_addr_len = sizeof(cli_addr);
+				int client = accept(fd, (struct sockaddr*)&cli_addr, &cli_addr_len);
+				if (client == -1)
+				{
+					LOG_ERROR("accept, errno[%d], error[%s]", errno, strerror(errno));
+					continue;
+				}
 
+				LOG_DEBUG("Accept new conn, [%s:%d]", inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
+				event.events = EPOLLIN;
+				event.data.fd = client;
+				epoll_ctl(epfd, EPOLL_CTL_ADD, client, &event);
+			}
+			else if (events[i].events & EPOLLIN)
+			{ // read event
+				char buf[1024];
+				BZERO(buf);
+				int iRet = recv(fd, buf, 1024, 0);
+				if (iRet == 0)
+				{ // peer shutdown
+					LOG_DEBUG("fd[%d] peer shutdown, close it", fd);
+					epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
+					close(fd);
+					continue;
+				}
+				else if (iRet == -1)
+				{
+					if (errno == EAGAIN || errno == EWOULDBLOCK)
+					{
+						LOG_DEBUG("No data");
+						continue;
+					}
+				}
+
+				TrimStr(buf);
+				LOG_DEBUG("Recv [%d] bytes data, content[%s]", iRet, buf);
+
+				event.events = EPOLLOUT;
+				event.data.fd = fd;
+				epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &event);
+			}
+			else if (events[i].events & EPOLLOUT)
+			{ // write event
+				char buf[1024] = "Recv data!\n";
+				int iRet = send(fd, buf, strlen(buf), 0);
+				if (iRet == -1)
+				{
+					if (errno == EAGAIN || errno == EWOULDBLOCK)
+					{
+						LOG_DEBUG("No space");
+						continue;
+					}
+				}
+				else if (iRet < strlen(buf))
+				{ // space is not not enough, should continue send the last data
+					LOG_ERROR("Space is not enough");
+					continue;
+				}
+				else
+				{
+					LOG_DEBUG("Send succ!");
+				}
+
+				event.events = EPOLLIN;
+				event.data.fd = fd;
+				epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &event);
 			}
 		}
 	}
 
+	close(server);
+	close(epfd);
 
 	return 0;
 }
