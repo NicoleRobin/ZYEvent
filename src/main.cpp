@@ -14,7 +14,12 @@
 #include <string.h>
 #include <errno.h>
 
+#include <map>
+#include <string>
+
 #include "ZYLog.h"
+
+using namespace std;
 
 #define BZERO(data) { memset(&data, 0, sizeof(data)); }
 
@@ -69,9 +74,10 @@ int main(int argc, char **argv)
 
 	epoll_ctl(epfd, EPOLL_CTL_ADD, server, &event);
 
-	epoll_event events[500];
+	map<int, string> mapSndBuf;
 	while (true)
 	{
+		epoll_event events[500];
 		int fds = epoll_wait(epfd, events, 500, -1);
 		ASSERT_RET(fds != -1, -1);
 		LOG_DEBUG("fds[%d]", fds);
@@ -116,6 +122,7 @@ int main(int argc, char **argv)
 					}
 				}
 
+				mapSndBuf[fd] = buf;
 				TrimStr(buf);
 				LOG_DEBUG("Recv [%d] bytes data, content[%s]", iRet, buf);
 
@@ -125,8 +132,8 @@ int main(int argc, char **argv)
 			}
 			else if (events[i].events & EPOLLOUT)
 			{ // write event
-				char buf[1024] = "Recv data!\n";
-				int iRet = send(fd, buf, strlen(buf), 0);
+				string strSndBuf = mapSndBuf[fd];
+				int iRet = send(fd, strSndBuf.c_str(), strSndBuf.length(), 0);
 				if (iRet == -1)
 				{
 					if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -135,7 +142,7 @@ int main(int argc, char **argv)
 						continue;
 					}
 				}
-				else if (iRet < strlen(buf))
+				else if (iRet < strSndBuf.length())
 				{ // space is not not enough, should continue send the last data
 					LOG_ERROR("Space is not enough");
 					continue;
