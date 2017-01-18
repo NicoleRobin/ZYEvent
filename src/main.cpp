@@ -30,6 +30,7 @@ using namespace std;
 typedef void (*CallBack)(int epfd, int fd, int events, void *arg);
 
 const int MAX_SIZE = 1024;
+map<int, struct event> mapEvent;
 
 struct event
 {
@@ -39,6 +40,7 @@ struct event
 	int offset;
 	int bufLen;
 	CallBack cb;
+	int lastTime;
 };
 
 void TrimStr(char *str);
@@ -88,6 +90,7 @@ void accept_cb(int epfd, int fd, int events, void *arg)
 	pEvent->fd = client;
 	pEvent->events = EPOLLIN | EPOLLOUT;
 	pEvent->cb = read_cb;
+	pEvent->lastTime = time(NULL);
 
 	epoll_event event;
 	event.events = EPOLLIN;
@@ -132,6 +135,7 @@ void read_cb(int epfd, int fd, int events, void *arg)
 		event.events = EPOLLOUT;
 		event.data.ptr = pEvent;
 		pEvent->cb = write_cb;
+		pEvent->lastTime = time(NULL);
 		epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &event);
 	}
 }
@@ -174,6 +178,7 @@ void write_cb(int epfd, int fd, int events, void *arg)
 		event.events = EPOLLIN;
 		event.data.ptr = pEvent;
 		pEvent->cb = read_cb;
+		pEvent->lastTime = time(NULL);
 		epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &event);
 	}
 }
@@ -226,7 +231,6 @@ int main(int argc, char **argv)
 
 	epoll_ctl(epfd, EPOLL_CTL_ADD, server, &event);
 
-	map<int, string> mapSndBuf;
 	while (true)
 	{
 		epoll_event events[500];
@@ -244,6 +248,20 @@ int main(int argc, char **argv)
 			else if ((events[i].events & EPOLLOUT) && (pEvent->events & EPOLLOUT))
 			{
 				pEvent->cb(epfd, pEvent->fd, events[i].events, pEvent);
+			}
+		}
+
+		// 检测超时
+		int iCurTime = time(NULL);
+		map<int, struct event>::iterator itIdx = mapEvent.begin();
+		map<int, struct event>::iterator itEnd = mapEvent.end();
+		for (; itIdx != itEnd; ++itIdx)
+		{
+			if (iCurTime - itIdx->second.lastTime > 30)
+			{
+				epoll_ctl(epfd, EPOLL_CTL_DEL, itIdx->second.fd, NULL);
+				close(itIdx->second.fd);
+				LOG_DEBUG("socket [%d] timeout, close it", itIdx->second.fd);
 			}
 		}
 	}
