@@ -3,6 +3,7 @@
  */
 #include <unistd.h>
 #include <libgen.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
@@ -41,6 +42,7 @@ struct event
 };
 
 void TrimStr(char *str);
+int setnonblock(int fd);
 void accept_cb(int epfd, int fd, int events, void *arg);
 void read_cb(int epfd, int fd, int events, void *arg);
 void write_cb(int epfd, int fd, int events, void *arg);
@@ -58,6 +60,19 @@ void TrimStr(char *str)
 	}
 }
 
+int setnonblock(int fd)
+{
+	int iOldVal = fcntl(fd, F_GETFL, 0);
+	int iNewVal = iOldVal | O_NONBLOCK;
+	int iRet = fcntl(fd, F_SETFL, iNewVal);
+	if (iRet == -1)
+	{
+		LOG_ERROR("errno[%d], error[%s]", errno, strerror(errno));
+	}
+
+	return iRet;
+}
+
 void accept_cb(int epfd, int fd, int events, void *arg)
 {
 	struct sockaddr_in cli_addr;
@@ -66,6 +81,7 @@ void accept_cb(int epfd, int fd, int events, void *arg)
 	int client = accept(fd, (struct sockaddr*)&cli_addr, &cli_addr_len);
 	ASSERT_RET(client);
 
+	setnonblock(client);
 	LOG_DEBUG("Accept new conn, [%s:%d]", inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
 
 	struct event *pEvent = new event;
@@ -179,6 +195,9 @@ int main(int argc, char **argv)
 	// set SOADDR_REUSE
 	int iOptVal = 1;
 	setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &iOptVal, sizeof(iOptVal));
+
+	// set nonblock
+	setnonblock(server);
 
 	struct sockaddr_in addr;
 	BZERO(addr);
