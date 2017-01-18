@@ -66,6 +66,8 @@ void accept_cb(int epfd, int fd, int events, void *arg)
 	int client = accept(fd, (struct sockaddr*)&cli_addr, &cli_addr_len);
 	ASSERT_RET(client);
 
+	LOG_DEBUG("Accept new conn, [%s:%d]", inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
+
 	struct event *pEvent = new event;
 	pEvent->fd = client;
 	pEvent->events = EPOLLIN | EPOLLOUT;
@@ -106,7 +108,7 @@ void read_cb(int epfd, int fd, int events, void *arg)
 	}
 	else
 	{
-		TrimStr(pEvent->buf);
+		// TrimStr(pEvent->buf);
 		LOG_DEBUG("Recv %d bytes data, content:[%s]", pEvent->bufLen, pEvent->buf);
 
 		epoll_event event;
@@ -174,6 +176,10 @@ int main(int argc, char **argv)
 	int server = socket(AF_INET, SOCK_STREAM, 0);
 	ASSERT_RET(server, -1);
 
+	// set SOADDR_REUSE
+	int iOptVal = 1;
+	setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &iOptVal, sizeof(iOptVal));
+
 	struct sockaddr_in addr;
 	BZERO(addr);
 	addr.sin_family = AF_INET;
@@ -220,80 +226,6 @@ int main(int argc, char **argv)
 			{
 				pEvent->cb(epfd, pEvent->fd, events[i].events, pEvent);
 			}
-			/*
-			int fd = events[i].data.fd;
-			if (fd == server)
-			{ // accept new conn
-				struct sockaddr_in cli_addr;
-				socklen_t cli_addr_len = sizeof(cli_addr);
-				int client = accept(fd, (struct sockaddr*)&cli_addr, &cli_addr_len);
-				if (client == -1)
-				{
-					LOG_ERROR("accept, errno[%d], error[%s]", errno, strerror(errno));
-					continue;
-				}
-
-				LOG_DEBUG("Accept new conn, [%s:%d]", inet_ntoa(cli_addr.sin_addr), ntohs(cli_addr.sin_port));
-				event.events = EPOLLIN;
-				event.data.fd = client;
-				epoll_ctl(epfd, EPOLL_CTL_ADD, client, &event);
-			}
-			else if (events[i].events & EPOLLIN)
-			{ // read event
-				char buf[1024];
-				BZERO(buf);
-				int iRet = recv(fd, buf, 1024, 0);
-				if (iRet == 0)
-				{ // peer shutdown
-					LOG_DEBUG("fd[%d] peer shutdown, close it", fd);
-					epoll_ctl(epfd, EPOLL_CTL_DEL, fd, NULL);
-					close(fd);
-					continue;
-				}
-				else if (iRet == -1)
-				{
-					if (errno == EAGAIN || errno == EWOULDBLOCK)
-					{
-						LOG_DEBUG("No data");
-						continue;
-					}
-				}
-
-				mapSndBuf[fd] = buf;
-				TrimStr(buf);
-				LOG_DEBUG("Recv [%d] bytes data, content[%s]", iRet, buf);
-
-				event.events = EPOLLOUT;
-				event.data.fd = fd;
-				epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &event);
-			}
-			else if (events[i].events & EPOLLOUT)
-			{ // write event
-				string strSndBuf = mapSndBuf[fd];
-				int iRet = send(fd, strSndBuf.c_str(), strSndBuf.length(), 0);
-				if (iRet == -1)
-				{
-					if (errno == EAGAIN || errno == EWOULDBLOCK)
-					{
-						LOG_DEBUG("No space");
-						continue;
-					}
-				}
-				else if (iRet < strSndBuf.length())
-				{ // space is not not enough, should continue send the last data
-					LOG_ERROR("Space is not enough");
-					continue;
-				}
-				else
-				{
-					LOG_DEBUG("Send succ!");
-				}
-
-				event.events = EPOLLIN;
-				event.data.fd = fd;
-				epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &event);
-			}
-			*/
 		}
 	}
 
