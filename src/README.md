@@ -29,4 +29,5 @@ V_0.5
 > 把操作事件的代码提取出来几个函数放在单独的文件中。   
 
 ### 问题
-1. libevent中的event对应一个事件而不是一个套接字，
+1. libevent中的event对应一个事件而不是一个套接字，所以如果要完成一个套接字的读写操作，要么需要两个event对象（就像bufferevent结构一样，包含evread、evwrite两个事件），要么就需要在把要发送的数据放到发送缓冲区之后，调用event_add，在发送数据发送完毕之后调用event_del。
+2. libevent中的event结构本身没有提供缓冲区，所以如果仅仅使用event结构（不使用bufferevent）是没办法实现一个完成的服务器的，需要额外的空间保存buffer。
