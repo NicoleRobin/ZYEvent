@@ -1,5 +1,6 @@
-## ReactorµÄÔ­Àí
+## Reactorçš„åŸç†
 
+# reactor_1
 ![Reactor](../image/reactor_1.png)
-
-![Reactor](../image/reactor_1.png)
+# reactor_2
+![Reactor](../image/reactor_2.png)
