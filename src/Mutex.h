@@ -30,18 +30,23 @@ namespace ZY
 			pthread_mutex_destroy(&mutex_);
 		}
 
-		void lock()
+		void Lock()
 		{
 			pthread_mutex_lock(mutex_);
 		}
 
-		void unlock()
+		void Unlock()
 		{
 			pthread_mutex_unlock(&mutex_);
 		}
+
+		pthread_mutex_t* GetPthreadMutex()
+		{
+			return &m_mutex;
+		}
 	private:
-		pthread_mutex_t mutex_;
-		pid_t holder_;
+		pthread_mutex_t m_mutex;
+		pid_t m_holder;
 	};
 
 	/*
@@ -58,12 +63,12 @@ namespace ZY
 		explicit MutexLockGuard(MutexLock &mutex)
 			:mutex_(mutex)
 		{
-			mutex_.lock();
+			mutex_.Lock();
 		}
 
 		~MutexLockGuard()
 		{
-			mutex_.unlock();
+			mutex_.Unlock();
 		}
 
 	private:
