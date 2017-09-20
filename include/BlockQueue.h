@@ -1,6 +1,9 @@
 #ifndef BLOCK_QUEUE_H
 #define BLOCK_QUEUE_H
 
+#include "Mutex.h"
+#include "Condition.h"
+
 #include <deque>
 
 namespace ZY
@@ -17,18 +20,18 @@ namespace ZY
 
 		void Put(const T& val)
 		{
-			MutexLockGuard(m_mutex);
+			MutexLockGuard lock(m_mutex);
 			m_queue.push_back(val);
-			m_condNotEmpty().notify();
+			m_condNotEmpty.Notify();
 		}
 
 		T Get()
 		{
-			MutexLockGuard(m_mutex);
+			MutexLockGuard lock(m_mutex);
 			
 			while (m_queue.empty())
 			{
-				m_condNotEmpty.wait();
+				m_condNotEmpty.Wait();
 			}
 
 			T front(m_queue.front());
@@ -38,12 +41,12 @@ namespace ZY
 
 		int Size() const
 		{
-			MutexLockGuard(m_mutex);
+			MutexLockGuard lock(m_mutex);
 			return m_queue.size();
 		}
 
 	private:
-		MutexLock m_mutex;
+		mutable MutexLock m_mutex;
 		Condition m_condNotEmpty;
 		std::deque<T> m_queue;
 	};

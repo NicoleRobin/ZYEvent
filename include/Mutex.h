@@ -20,24 +20,24 @@ namespace ZY
 	{
 	public:
 		MutexLock()
-			:holder(0)
+			:m_holder(0)
 		{
-			pthread_mutex_init(&mutex_, NULL);
+			pthread_mutex_init(&m_mutex, NULL);
 		}
 
 		~MutexLock()
 		{
-			pthread_mutex_destroy(&mutex_);
+			pthread_mutex_destroy(&m_mutex);
 		}
 
 		void Lock()
 		{
-			pthread_mutex_lock(mutex_);
+			pthread_mutex_lock(&m_mutex);
 		}
 
 		void Unlock()
 		{
-			pthread_mutex_unlock(&mutex_);
+			pthread_mutex_unlock(&m_mutex);
 		}
 
 		pthread_mutex_t* GetPthreadMutex()

@@ -1,0 +1,7 @@
+add_executable(testBlockQueue testBlockQueue.cpp)
+target_link_libraries(testBlockQueue zyevent)
+target_link_libraries(testBlockQueue pthread)
+
+add_executable(testBoundedBlockQueue testBoundedBlockQueue.cpp)
+target_link_libraries(testBoundedBlockQueue zyevent)
+target_link_libraries(testBoundedBlockQueue pthread)
